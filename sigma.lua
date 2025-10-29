@@ -1,50 +1,64 @@
 -- LocalScript (StarterPlayerScripts)
--- Killaura-style targeting for any Player (disguised NPCs)
--- USE ONLY FOR TEST / NPC PLAYERS. DO NOT TARGET REAL PLAYERS.
+-- Killaura-style targeting for NPCs disguised as Players
+-- USE ONLY FOR TEST / NPC PLAYERS
 
 -- Services
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 
 -- ===== CONFIG =====
-local RemoteName = "WeaponHitEvent"          -- Remote in ReplicatedStorage
-local MAX_RANGE_DEFAULT = 20                 -- max distance to allow attack
-local ATTACK_INTERVAL_DEFAULT = 0.25         -- seconds between attacks
-local BEHIND_DISTANCE_DEFAULT = 2            -- studs behind target to teleport to
--- ===== END CONFIG =====
+local GUID = "cb9801ea-e650-4c32-8a86-af1f51494f63" -- your character folder GUID
+local REMOTE_NAME = "WeaponHitEvent"               -- remote inside GUID
+local TARGET_PART_NAME = "LeftHand"               -- part of the target to pass to remote
 
-local WeaponHitEvent = ReplicatedStorage:FindFirstChild(RemoteName)
-if not WeaponHitEvent then
-    warn("[Killaura] Remote '"..RemoteName.."' not found in ReplicatedStorage. Remote calls may fail.")
-end
+local MAX_RANGE_DEFAULT = 20
+local ATTACK_INTERVAL_DEFAULT = 0.25
+local BEHIND_DISTANCE_DEFAULT = 2
+-- ===== END CONFIG =====
 
 -- Helper: check if a Player can be targeted
 local function playerIsTargetable(player)
     return player ~= LocalPlayer
 end
 
--- Helper: get player's character HRP
-local function getPlayerHRP(player)
-    if not player then return nil end
-    local char = player.Character
-    if not char then return nil end
-    return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+-- Helper: get player's target part
+local function getTargetPart(player)
+    if not player.Character then return nil end
+    return player.Character:FindFirstChild(TARGET_PART_NAME)
 end
 
--- Helper: get local character HRP
+-- Helper: get local HRP
 local function getLocalHRP()
     local char = LocalPlayer.Character
     if not char then return nil end
     return char:FindFirstChild("HumanoidRootPart")
 end
 
--- Build GUI
+-- Helper: fire the remote from your character
+local function fireWeaponRemote(targetPlayer)
+    local char = LocalPlayer.Character
+    if not char then return end
+
+    local guidFolder = char:FindFirstChild(GUID)
+    if not guidFolder then return end
+
+    local event = guidFolder:FindFirstChild(REMOTE_NAME)
+    if not event or not event:IsA("RemoteEvent") then return end
+
+    local targetPart = getTargetPart(targetPlayer)
+    if targetPart then
+        pcall(function()
+            event:FireServer(targetPart)
+        end)
+    end
+end
+
+-- ===== GUI =====
 local playerGui = LocalPlayer:WaitForChild("PlayerGui")
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "DisguisedNPC_KillauraGUI"
+screenGui.Name = "NPC_Killaura_GUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
 
@@ -60,7 +74,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 30)
 title.Position = UDim2.new(0, 0, 0, 6)
 title.BackgroundTransparency = 1
-title.Text = "Disguised NPC Targeting (TEST ONLY)"
+title.Text = "Disguised NPC Killaura"
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextSize = 18
 title.TextColor3 = Color3.fromRGB(220,220,220)
@@ -201,7 +215,7 @@ spawn(function()
         end
 
         local localHRP = getLocalHRP()
-        local targetHRP = getPlayerHRP(selectedPlayer)
+        local targetHRP = selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart")
         if not localHRP or not targetHRP then wait(0.05) continue end
 
         -- Live settings
@@ -223,10 +237,8 @@ spawn(function()
         local lookAt = CFrame.new(safePos, targetHRP.Position)
         pcall(function() localHRP.CFrame = lookAt end)
 
-        -- Fire remote
-        if WeaponHitEvent then
-            pcall(function() WeaponHitEvent:FireServer(targetHRP) end)
-        end
+        -- Fire character-local remote
+        fireWeaponRemote(selectedPlayer)
     end
 end)
 
