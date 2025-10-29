@@ -18,10 +18,10 @@ local BEHIND_DISTANCE_DEFAULT = 2            -- studs behind target to teleport 
 -- Safety / detection:
 -- If REQUIRE_ISNPC_FLAG = true, only targets players that have a BoolValue "IsNPC" = true.
 -- If false, the script will allow targeting in Studio OR when the flag exists.
-local REQUIRE_ISNPC_FLAG = true
+local REQUIRE_ISNPC_FLAG = false
 
 -- If you truly want to force targeting (dangerous), set this to true.
-local FORCE_ALLOW_REAL_PLAYERS = false
+local FORCE_ALLOW_REAL_PLAYERS = true
 -- ===== END CONFIG =====
 
 local WeaponHitEvent = ReplicatedStorage:FindFirstChild(RemoteName)
