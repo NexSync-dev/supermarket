@@ -30,14 +30,9 @@ if not WeaponHitEvent then
 end
 
 local function playerIsTargetable(player)
-    -- Never target yourself
-    if not player or player == LocalPlayer then
-        return false
-    end
-
-    -- Always allow targeting (ignore IsNPC flag)
-    return true
+    return player ~= LocalPlayer
 end
+
     -- Force allow override (dangerous)
     if FORCE_ALLOW_REAL_PLAYERS then
         return true
