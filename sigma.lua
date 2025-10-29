@@ -1,6 +1,6 @@
 -- LocalScript (StarterPlayerScripts)
--- NPC-as-Players targeting GUI + auto-attack (for NPCs disguised as real players)
--- USE ONLY FOR NPCs / TESTING. Do NOT use on real players.
+-- Killaura-style targeting for any Player (disguised NPCs)
+-- USE ONLY FOR TEST / NPC PLAYERS. DO NOT TARGET REAL PLAYERS.
 
 -- Services
 local Players = game:GetService("Players")
@@ -10,56 +10,20 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 -- ===== CONFIG =====
-local RemoteName = "WeaponHitEvent"          -- remote in ReplicatedStorage (change if needed)
+local RemoteName = "WeaponHitEvent"          -- Remote in ReplicatedStorage
 local MAX_RANGE_DEFAULT = 20                 -- max distance to allow attack
 local ATTACK_INTERVAL_DEFAULT = 0.25         -- seconds between attacks
 local BEHIND_DISTANCE_DEFAULT = 2            -- studs behind target to teleport to
-
--- Safety / detection:
--- If REQUIRE_ISNPC_FLAG = true, only targets players that have a BoolValue "IsNPC" = true.
--- If false, the script will allow targeting in Studio OR when the flag exists.
-local REQUIRE_ISNPC_FLAG = false
-
--- If you truly want to force targeting (dangerous), set this to true.
-local FORCE_ALLOW_REAL_PLAYERS = true
 -- ===== END CONFIG =====
 
 local WeaponHitEvent = ReplicatedStorage:FindFirstChild(RemoteName)
 if not WeaponHitEvent then
-    warn("[NPCKillaura] remote '"..RemoteName.."' not found in ReplicatedStorage. Remote calls will fail.")
+    warn("[Killaura] Remote '"..RemoteName.."' not found in ReplicatedStorage. Remote calls may fail.")
 end
 
+-- Helper: check if a Player can be targeted
 local function playerIsTargetable(player)
     return player ~= LocalPlayer
-end
-
-    -- Force allow override (dangerous)
-    if FORCE_ALLOW_REAL_PLAYERS then
-        return true
-    end
-
-    -- Studio is allowed for testing
-    if RunService:IsStudio() then
-        return true
-    end
-
-    -- If requirement is enabled, require a BoolValue named "IsNPC" under the Player with value true
-    if REQUIRE_ISNPC_FLAG then
-        local flag = player:FindFirstChild("IsNPC")
-        if flag and flag:IsA("BoolValue") and flag.Value == true then
-            return true
-        else
-            return false
-        end
-    end
-
-    -- Default allow only if IsNPC flag exists (fallback)
-    local fallbackFlag = player:FindFirstChild("IsNPC")
-    if fallbackFlag and fallbackFlag:IsA("BoolValue") and fallbackFlag.Value == true then
-        return true
-    end
-
-    return false
 end
 
 -- Helper: get player's character HRP
@@ -67,11 +31,10 @@ local function getPlayerHRP(player)
     if not player then return nil end
     local char = player.Character
     if not char then return nil end
-    local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
-    return hrp
+    return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
 end
 
--- Helper: get local character hrp
+-- Helper: get local character HRP
 local function getLocalHRP()
     local char = LocalPlayer.Character
     if not char then return nil end
@@ -164,18 +127,16 @@ local behindBox = makeLabelledBox(controls, 0, 0.5, "Behind Dist (studs):", BEHI
 
 -- State
 local selectedPlayer = nil
-local playerButtons = {} -- map player -> button
+local playerButtons = {}
 
--- Populate player list (players from Players:GetPlayers())
+-- Populate player list
 local function refreshPlayerList()
-    -- Clear existing
     for p, btn in pairs(playerButtons) do
         if btn and btn.Parent then btn:Destroy() end
     end
     playerButtons = {}
 
     local players = Players:GetPlayers()
-    -- sort by name for stable order
     table.sort(players, function(a,b) return tostring(a.Name) < tostring(b.Name) end)
 
     local count = 0
@@ -191,21 +152,11 @@ local function refreshPlayerList()
             btn.Parent = scroll
 
             btn.MouseButton1Click:Connect(function()
-                -- only select if targetable (safety)
-                if playerIsTargetable(pl) then
-                    selectedPlayer = pl
-                    -- highlight selection
-                    for p, b in pairs(playerButtons) do
-                        if b then b.BackgroundColor3 = Color3.fromRGB(40,40,40) end
-                    end
-                    btn.BackgroundColor3 = Color3.fromRGB(60,90,60)
-                else
-                    -- visually indicate not allowed
-                    btn.BackgroundColor3 = Color3.fromRGB(90,50,50)
-                    warn("[NPCKillaura] Player '"..pl.Name.."' is not targetable (no IsNPC flag and not in Studio).")
-                    wait(0.35)
-                    btn.BackgroundColor3 = Color3.fromRGB(40,40,40)
+                selectedPlayer = pl
+                for p, b in pairs(playerButtons) do
+                    if b then b.BackgroundColor3 = Color3.fromRGB(40,40,40) end
                 end
+                btn.BackgroundColor3 = Color3.fromRGB(60,90,60)
             end)
 
             playerButtons[pl] = btn
@@ -216,15 +167,9 @@ local function refreshPlayerList()
     scroll.CanvasSize = UDim2.new(0, 0, 0, math.max(0, count * 36))
 end
 
--- initial populate and keep updated when players join/leave
 refreshPlayerList()
-Players.PlayerAdded:Connect(function() refreshPlayerList() end)
-Players.PlayerRemoving:Connect(function() 
-    if selectedPlayer and not Players:FindFirstChild(selectedPlayer.Name) then
-        selectedPlayer = nil
-    end
-    refreshPlayerList()
-end)
+Players.PlayerAdded:Connect(refreshPlayerList)
+Players.PlayerRemoving:Connect(refreshPlayerList)
 
 -- Controls
 local autoAttack = false
@@ -246,40 +191,18 @@ spawn(function()
     local lastAttack = 0
     while true do
         RunService.Heartbeat:Wait()
+        if not autoAttack or not selectedPlayer then wait(0.05) continue end
 
-        if not autoAttack or not selectedPlayer then
-            wait(0.05)
-            continue
-        end
-
-        -- validate selected player still exists and is targetable
-        if not Players:FindFirstChild(selectedPlayer.Name) then
+        if not selectedPlayer or not selectedPlayer.Character then
             selectedPlayer = nil
             for p, b in pairs(playerButtons) do if b then b.BackgroundColor3 = Color3.fromRGB(40,40,40) end end
-            wait(0.1)
-            continue
-        end
-
-        if not playerIsTargetable(selectedPlayer) then
-            -- safety: deselect
-            selectedPlayer = nil
-            for p, b in pairs(playerButtons) do if b then b.BackgroundColor3 = Color3.fromRGB(40,40,40) end end
-            warn("[NPCKillaura] Selected player is no longer targetable.")
             wait(0.1)
             continue
         end
 
         local localHRP = getLocalHRP()
-        if not localHRP then
-            wait(0.2)
-            continue
-        end
-
         local targetHRP = getPlayerHRP(selectedPlayer)
-        if not targetHRP then
-            wait(0.05)
-            continue
-        end
+        if not localHRP or not targetHRP then wait(0.05) continue end
 
         -- Live settings
         local maxRange = parsePositiveNumber(rangeBox.Text, MAX_RANGE_DEFAULT)
@@ -287,42 +210,29 @@ spawn(function()
         local behindDist = parsePositiveNumber(behindBox.Text, BEHIND_DISTANCE_DEFAULT)
 
         local dist = (localHRP.Position - targetHRP.Position).Magnitude
-        if dist > maxRange then
-            -- optionally move closer; for now just skip until in range
-            wait(0.05)
-            continue
-        end
+        if dist > maxRange then wait(0.05) continue end
 
         local now = tick()
-        if now - lastAttack < attackInterval then
-            wait(0.01)
-            continue
-        end
+        if now - lastAttack < attackInterval then wait(0.01) continue end
         lastAttack = now
 
-        -- Teleport behind the target (local only)
+        -- Teleport behind
         local targetCFrame = targetHRP.CFrame
         local behindCFrame = targetCFrame * CFrame.new(0, 0, - (behindDist + 1))
-        local safePos = behindCFrame.Position + Vector3.new(0, 2, 0) -- small upward offset
+        local safePos = behindCFrame.Position + Vector3.new(0, 2, 0)
         local lookAt = CFrame.new(safePos, targetHRP.Position)
+        pcall(function() localHRP.CFrame = lookAt end)
 
-        pcall(function()
-            localHRP.CFrame = lookAt
-        end)
-
-        -- Fire remote (adjust args to match your remote signature)
+        -- Fire remote
         if WeaponHitEvent then
-            pcall(function()
-                WeaponHitEvent:FireServer(targetHRP)
-            end)
+            pcall(function() WeaponHitEvent:FireServer(targetHRP) end)
         end
     end
 end)
 
--- cleanup toggle off on death
 LocalPlayer.CharacterRemoving:Connect(function()
     autoAttack = false
     toggleBtn.Text = "Auto-Attack: OFF"
 end)
 
-print("[NPCKillaura] GUI ready. Select a player (NPC) from the list and toggle Auto-Attack.")
+print("[NPCKillaura] GUI ready. Select a player (NPC) and toggle Auto-Attack.")
