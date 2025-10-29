@@ -29,13 +29,15 @@ if not WeaponHitEvent then
     warn("[NPCKillaura] remote '"..RemoteName.."' not found in ReplicatedStorage. Remote calls will fail.")
 end
 
--- Helper: detect whether a Player is allowed to be targeted (safe guard)
 local function playerIsTargetable(player)
     -- Never target yourself
     if not player or player == LocalPlayer then
         return false
     end
 
+    -- Always allow targeting (ignore IsNPC flag)
+    return true
+end
     -- Force allow override (dangerous)
     if FORCE_ALLOW_REAL_PLAYERS then
         return true
